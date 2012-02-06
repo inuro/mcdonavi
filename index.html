@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no">
+<meta name="format-detection" content="telephone=no">
+<title>マクドナビ</title>
+<style type="text/css">
+html, body, div{
+	margin:0;
+	padding:0;
+	font-family:sans-serif;
+}
+a{
+	color:#fff;
+	font-weight:bold;
+}
+
+div#label{
+	z-index:10;
+	color: #fff;
+	text-shadow: rgba(0,0,0,0.3) 0px -1px 1px;  
+	background-color: #000;  
+	background-image: -webkit-gradient(  
+		linear,  
+		0% 0%,  
+		0% 100%,  
+		from(rgba(155, 155, 155, 0.1)),  
+		to(rgba(255, 255, 255, 0.5)),  
+		color-stop(.5,rgba(155, 155, 155, 0.2)), 
+		color-stop(.5,rgba(255, 255, 255, 0.1))
+	);
+	-webkit-border-radius: 8px;  
+	-webkit-box-shadow: rgba(0,0,0,.2) 1px 2px 4px;  
+	opacity: .7;
+	padding:8px;
+	overflow:hidden;
+}
+div#title{
+	font-size:14pt;
+	font-weight:bold;
+	line-height:1.2em;
+	width:100%;
+	overflow:hidden;
+}
+div#desc{
+	font-size:9pt;
+	font-weight:normal;
+	line-height:9pt;
+	overflow:hidden;
+}
+
+</style>
+</head>
+<body>
+
+<div id="case" style="width:100%; height:320px; position:relative;">
+<div id="map" style="width:100%; height:100%;"></div>
+<div id="label" style="position:absolute; bottom:4px; right:4px; width:92%; height:64px">
+<div id="title">マクドナビ</div>
+<div id="desc">always I'm lovin'it</div>
+</div>
+</div><!-- #case -->
+
+
+
+<script src="http://code.jquery.com/jquery-latest.js"></script>
+<script src="http://js.api.olp.yahooapis.jp/OpenLocalPlatform/V1/jsapi?appid=multifind"></script>
+<script>
+jQuery(document).ready(function($){
+
+	var resizeMap = function(e){
+		if(!window.navigator.standalone){
+			var h = parseInt($(window).height(), 10);
+			var w = parseInt($(window).width(), 10);
+			if(w == 320){
+				h = 416;
+			}
+			else if (w == 480){
+				h = 268;
+			}
+			$('#case').css({
+				height: h
+			});
+		}
+		if(map && map.isLoaded()){
+			setTimeout(function(){
+				map.checkResize();
+				map.redraw();
+				scrollTo(0,1);
+			}, 1);
+		}
+	}
+	$(document).bind("orientationchange", resizeMap);
+	
+
+//initialize map
+var map = new Y.Map("map", {
+		"configure": {
+			"scrollWheelZoom": true
+		}
+	}
+);
+map.bind("load", function(){
+	$(document).trigger("orientationchange");
+});
+map.addControl(new Y.ZoomControl());
+map.drawMap(new Y.LatLng(34.681243013168576,135.2022337219238), 14, Y.LayerSetId.NORMAL);
+
+var appId = "multifind";
+var cassetteId = "d115e2a62c8f28cb03a493dc407fa03f";//mcdonald
+var url = "http://search.olp.yahooapis.jp/OpenLocalPlatform/V1/localSearch";
+
+var plugin = null;
+
+map.bind("moveend", function(){
+	var latlng = map.getCenter();
+//	mcdoRoute(latlng);
+});
+
+var mcdoRoute = function(latlng){
+	//search nearest McDonald from latlng
+	$.ajax({
+        url: url,
+        dataType: "jsonp",
+        data:{
+			appid: appId,
+			cid: cassetteId,
+			results: 1,
+			lat: latlng.lat(),
+			lon: latlng.lng(),
+			sort: "dist",
+			output: "json"
+        },
+        success:function(result){
+			if(result.Feature.length > 0){
+				var coords = result.Feature[0].Geometry.Coordinates.split(",");
+				var name = result.Feature[0].Name;
+				var address = result.Feature[0].Property.Address;
+				var tel = result.Feature[0].Property.Tel1;
+				var simplename = name.replace('マクドナルド','');
+				if(plugin){
+					map.removePlugin(plugin);
+				}
+				plugin = new Y.RouteSearchPlugin({latlngs:[
+					latlng,
+					new Y.LatLng(coords[1],coords[0])
+				]});
+				map.addPlugin(plugin);
+				
+				var distance = (plugin.estimateDistance() * 1000) + 'm';
+				$('#title').html(simplename + '(' +  distance + ')');
+				$('#desc').html(address + '<br /><a href="tel:"' + tel + '" title="' + name + '">' + tel + '</a>');
+			}
+        },
+		error: function(err){
+		}
+	});
+}
+
+$('#mcdo').bind('click', function(){
+	var latlng = map.getCenter();
+	mcdoRoute(latlng);
+});
+
+var geo = navigator.geolocation;
+if(geo){
+	var lasttime = 0;
+	var lastlatlng = new Y.LatLng(0,0);
+	var watchid = geo.watchPosition(function(pos){
+		var latlng = new Y.LatLng(pos.coords.latitude,pos.coords.longitude);
+		var time = new Date().getTime();
+		var timediff = time - lasttime;
+		var distdiff = latlng.distance(lastlatlng);
+	//	console.log(time + '-' + lasttime + '=' + timediff + '/' + latlng + '->' + lastlatlng + ':' + distdiff);
+		if(timediff > 60000 && distdiff > 0.1){
+			console.log("! route updated: timediff " + timediff + " & distdiff " + distdiff);
+			lasttime = time;
+			lastlatlng = latlng;
+			mcdoRoute(latlng);
+		}
+	});
+}
+
+});
+
+</script>
+</body>
+</html>
